@@ -1,0 +1,12 @@
+{
+  "categorias": ["Eletrônicos", "Informática"],
+  "lojas": ["Amazon", "Mercado Livre", "Magalu", "Pelando"],
+  "desconto_minimo": 0,
+  "preco_maximo": 500,
+  "preco_minimo": 0,
+  "palavras_chave": [],
+  "produtos_especificos": [],
+  "max_ofertas_por_hora": 10,
+  "max_ofertas_por_dia": 50,
+  "mensagem_template": "🔥 OFERTA ENCONTRADA!\n\n🛒 {nome}\n\n💰 De: R$ {preco_anterior}\n🔥 Por: R$ {preco}\n📉 {desconto}% OFF\n\n🏪 {loja}\n\n👉 COMPRAR:\n{url}\n\n⏰ Oferta encontrada às {hora}"
+}

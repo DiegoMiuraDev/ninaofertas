@@ -1,0 +1,7 @@
+httpx
+beautifulsoup4
+sqlalchemy
+apscheduler
+loguru
+python-dotenv
+lxml
