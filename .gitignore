@@ -3,4 +3,6 @@ venv/
 __pycache__/
 *.pyc
 ofertas.db
+ofertas.db-journal
 logs/
+whatsapp-qr.png

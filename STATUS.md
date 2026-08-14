@@ -1,6 +1,17 @@
 # Status do projeto — onde paramos
 
-Última atualização: 2026-08-12 (sessão 2)
+Última atualização: 2026-08-13
+
+## Foco atual das fontes
+
+- **Ativas:** Mercado Livre (API) + Amazon BR (scraping)
+- **Desligadas do pipeline:** Pelando, Magalu (arquivos ainda no repo)
+- `config.json`: só lojas Amazon/ML; `desconto_minimo: 15`; limite 1/hora, 5/dia
+- **Nicho:** automotivo (`termos_busca` no config.json)
+- Faixa: R$ 20–1000, desconto mín. 15%, 1 oferta/hora, 5/dia
+- MELI precisa de `MERCADOLIVRE_APP_ID` / `MERCADOLIVRE_APP_SECRET` no `.env`
+- Amazon: scraping (pode 403); afiliado ainda não ligado
+
 
 ## ✅ O que já está pronto (feito e testado)
 

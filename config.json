@@ -1,12 +1,29 @@
 {
-  "categorias": ["Eletrônicos", "Informática"],
-  "lojas": ["Amazon", "Mercado Livre", "Magalu", "Pelando"],
-  "desconto_minimo": 0,
-  "preco_maximo": 500,
-  "preco_minimo": 0,
+  "lojas": ["Amazon", "Mercado Livre"],
+  "categorias": [],
+  "desconto_minimo": 15,
+  "preco_maximo": 1000,
+  "preco_minimo": 20,
+  "termos_busca": [
+    "óleo motor",
+    "filtro de óleo",
+    "pastilha de freio",
+    "amortecedor",
+    "bateria automotiva",
+    "pneu carro",
+    "lâmpada h7",
+    "led automotivo",
+    "câmera de ré",
+    "sensor estacionamento",
+    "suporte celular carro",
+    "tapete automotivo",
+    "cera automotiva",
+    "compressor de ar portátil",
+    "capa banco carro"
+  ],
   "palavras_chave": [],
   "produtos_especificos": [],
-  "max_ofertas_por_hora": 10,
-  "max_ofertas_por_dia": 50,
-  "mensagem_template": "🔥 OFERTA ENCONTRADA!\n\n🛒 {nome}\n\n💰 De: R$ {preco_anterior}\n🔥 Por: R$ {preco}\n📉 {desconto}% OFF\n\n🏪 {loja}\n\n👉 COMPRAR:\n{url}\n\n⏰ Oferta encontrada às {hora}"
+  "max_ofertas_por_hora": 1,
+  "max_ofertas_por_dia": 5,
+  "mensagem_template": "🔥 OFERTA AUTOMOTIVA!\n\n🛒 {nome}\n\n💰 De: R$ {preco_anterior}\n🔥 Por: R$ {preco}\n📉 {desconto}% OFF\n\n🏪 {loja}\n\n👉 COMPRAR:\n{url}\n\n⏰ {hora}"
 }

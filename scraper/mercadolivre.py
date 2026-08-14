@@ -51,9 +51,14 @@ class MercadoLivreScraper(Scraper):
     _avisou_sem_credenciais = False
 
     def _termos_busca(self) -> list[str]:
+        """Prioridade: termos_busca (nicho) > palavras_chave > categorias."""
         filtros = load_filtros()
-        termos = filtros.get("palavras_chave") or filtros.get("categorias") or ["oferta"]
-        return termos
+        return (
+            filtros.get("termos_busca")
+            or filtros.get("palavras_chave")
+            or filtros.get("categorias")
+            or ["oferta"]
+        )
 
     def buscar(self) -> list[OfertaCapturada]:
         ofertas: list[OfertaCapturada] = []
@@ -78,6 +83,8 @@ class MercadoLivreScraper(Scraper):
                     preco_anterior = item.get("original_price")
                     if preco is None:
                         continue
+                    # category_id (ex: MLB1055) não serve no filtro por nome —
+                    # nicho vem de palavras_chave / produtos_especificos.
                     ofertas.append(
                         OfertaCapturada(
                             nome=item.get("title", ""),
@@ -85,7 +92,7 @@ class MercadoLivreScraper(Scraper):
                             preco_anterior=float(preco_anterior) if preco_anterior else None,
                             loja="Mercado Livre",
                             url=item.get("permalink", ""),
-                            categoria=item.get("category_id"),
+                            categoria=None,
                             imagem=item.get("thumbnail"),
                             sku=item.get("id"),
                         )

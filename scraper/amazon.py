@@ -40,8 +40,14 @@ class AmazonScraper(Scraper):
     nome_fonte = "Amazon"
 
     def _termos_busca(self) -> list[str]:
+        """Prioridade: termos_busca (nicho) > palavras_chave > categorias."""
         filtros = load_filtros()
-        return filtros.get("palavras_chave") or filtros.get("categorias") or ["oferta"]
+        return (
+            filtros.get("termos_busca")
+            or filtros.get("palavras_chave")
+            or filtros.get("categorias")
+            or ["oferta"]
+        )
 
     def buscar(self) -> list[OfertaCapturada]:
         ofertas: list[OfertaCapturada] = []
