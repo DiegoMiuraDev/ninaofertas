@@ -4,11 +4,10 @@
 
 ## Foco atual das fontes
 
-- **Ativas:** Mercado Livre (API) + Amazon BR (scraping)
+- **Ativas:** Mercado Livre + Amazon + **Shopee** (API afiliados GraphQL)
 - **Desligadas do pipeline:** Pelando, Magalu (arquivos ainda no repo)
-- `config.json`: só lojas Amazon/ML; `desconto_minimo: 15`; limite 1/hora, 5/dia
-- **Nicho:** automotivo (`termos_busca` no config.json)
-- Faixa: R$ 20–1000, desconto mín. 15%, 1 oferta/hora, 5/dia
+- `config.json`: lojas Amazon/ML/Shopee; nicho automotivo via `termos_busca`
+- Shopee precisa de `SHOPEE_APP_ID` / `SHOPEE_APP_SECRET` (Open API do afiliado)
 - MELI precisa de `MERCADOLIVRE_APP_ID` / `MERCADOLIVRE_APP_SECRET` no `.env`
 - Amazon: scraping (pode 403); afiliado ainda não ligado
 

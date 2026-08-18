@@ -1,5 +1,5 @@
 {
-  "lojas": ["Amazon", "Mercado Livre"],
+  "lojas": ["Amazon", "Mercado Livre", "Shopee"],
   "categorias": [],
   "desconto_minimo": 15,
   "preco_maximo": 1000,

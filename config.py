@@ -35,6 +35,9 @@ class Settings:
     mercadolivre_app_secret: str = field(default_factory=lambda: os.getenv("MERCADOLIVRE_APP_SECRET", ""))
     lomadee_source_id: str = field(default_factory=lambda: os.getenv("LOMADEE_SOURCE_ID", ""))
 
+    shopee_app_id: str = field(default_factory=lambda: os.getenv("SHOPEE_APP_ID", ""))
+    shopee_app_secret: str = field(default_factory=lambda: os.getenv("SHOPEE_APP_SECRET", ""))
+
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
 
 
