@@ -1,17 +1,14 @@
-"""Registro de fontes de ofertas. Para adicionar uma nova fonte, crie um
-arquivo com uma subclasse de `Scraper` e adicione uma instância à lista abaixo.
+"""Registro de fontes de ofertas.
 
-Foco atual: Mercado Livre + Amazon + Shopee (API afiliados).
-Pelando/Magalu ficam fora do pipeline ativo.
+Foco do canal: Mercado Livre + Shopee (produtos, promoções e cupons),
+sempre com link de afiliado quando possível.
 """
-from scraper.amazon import AmazonScraper
 from scraper.base import OfertaCapturada, Scraper
 from scraper.mercadolivre import MercadoLivreScraper
 from scraper.shopee import ShopeeScraper
 
 FONTES: list[Scraper] = [
     MercadoLivreScraper(),
-    AmazonScraper(),
     ShopeeScraper(),
 ]
 

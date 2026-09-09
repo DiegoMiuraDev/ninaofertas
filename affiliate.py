@@ -1,0 +1,155 @@
+"""Conversão de URLs para links de afiliado.
+
+- Shopee: productOfferV2 / shopeeOfferV2 já entregam `offerLink` com tracking.
+  Se cair um link cru, tentamos `generateShortLink`.
+- Mercado Livre: endpoint interno createLink (tag + cookie de sessão).
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import time
+
+import httpx
+
+from config import settings
+from logger import logger
+
+ML_CREATE_LINK = "https://www.mercadolivre.com.br/affiliate-program/api/v2/affiliates/createLink"
+ML_LINKBUILDER = "https://www.mercadolivre.com.br/afiliados/linkbuilder"
+SHOPEE_API = "https://open-api.affiliate.shopee.com.br/graphql"
+
+
+def _cookie_value(cookie: str, name: str) -> str | None:
+    for part in cookie.split(";"):
+        part = part.strip()
+        if part.startswith(f"{name}="):
+            return part.split("=", 1)[1]
+    return None
+
+
+def _shopee_sign(app_id: str, secret: str, timestamp: int, payload: str) -> str:
+    return hashlib.sha256(f"{app_id}{timestamp}{payload}{secret}".encode()).hexdigest()
+
+
+def _ja_parece_afiliado_ml(url: str) -> bool:
+    u = url.lower()
+    return "matt_tool=" in u or "matt_word=" in u or "/sec/" in u or "click1.mercadolivre" in u
+
+
+def _ja_parece_afiliado_shopee(url: str) -> bool:
+    u = url.lower()
+    return "s.shopee.com.br" in u or "shope.ee/" in u or "an_re=" in u or "utm_content=" in u
+
+
+def converter_mercadolivre(url: str) -> str | None:
+    tag = settings.mercadolivre_affiliate_tag
+    cookie = settings.mercadolivre_affiliate_cookie
+    if not tag or not cookie:
+        logger.warning("[afiliado] MELI sem TAG/COOKIE no .env — mantendo URL original")
+        return None
+    if _ja_parece_afiliado_ml(url):
+        return url
+
+    csrf = _cookie_value(cookie, "_csrf") or _cookie_value(cookie, "csrf") or ""
+    headers = {
+        "accept": "application/json, text/plain, */*",
+        "content-type": "application/json",
+        "origin": "https://www.mercadolivre.com.br",
+        "referer": "https://www.mercadolivre.com.br/afiliados/linkbuilder",
+        "user-agent": (
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "cookie": cookie,
+    }
+    if csrf:
+        headers["x-csrf-token"] = csrf
+
+    try:
+        with httpx.Client(timeout=20.0, follow_redirects=True) as client:
+            # refresca cookies de sessão do linkbuilder quando possível
+            try:
+                client.get(ML_LINKBUILDER, headers={"cookie": cookie, "user-agent": headers["user-agent"]})
+            except httpx.HTTPError:
+                pass
+
+            resp = client.post(ML_CREATE_LINK, headers=headers, json={"urls": [url], "tag": tag})
+            if resp.status_code >= 400:
+                logger.error(f"[afiliado] MELI createLink HTTP {resp.status_code}: {resp.text[:200]}")
+                return None
+            data = resp.json()
+    except Exception as e:
+        logger.error(f"[afiliado] MELI createLink falhou: {e}")
+        return None
+
+    # formatos possíveis da resposta
+    for key in ("shortUrl", "affiliateLink", "url", "link"):
+        if isinstance(data.get(key), str) and data[key].startswith("http"):
+            return data[key]
+    if isinstance(data.get("urls"), list) and data["urls"]:
+        item = data["urls"][0]
+        if isinstance(item, str) and item.startswith("http"):
+            return item
+        if isinstance(item, dict):
+            for key in ("shortUrl", "affiliateLink", "url", "link", "affineLink"):
+                if isinstance(item.get(key), str) and item[key].startswith("http"):
+                    return item[key]
+    logger.error(f"[afiliado] MELI createLink resposta inesperada: {str(data)[:240]}")
+    return None
+
+
+def converter_shopee(url: str) -> str | None:
+    if _ja_parece_afiliado_shopee(url):
+        return url
+    app_id = settings.shopee_app_id
+    secret = settings.shopee_app_secret
+    if not app_id or not secret:
+        return None
+
+    query = (
+        "mutation {\n"
+        f'  generateShortLink(input: {{ originUrl: "{url}" }}) {{\n'
+        "    shortLink\n"
+        "  }\n"
+        "}"
+    )
+    payload_obj = {"query": query}
+    payload = json.dumps(payload_obj, separators=(",", ":"), ensure_ascii=False)
+    ts = int(time.time())
+    sig = _shopee_sign(app_id, secret, ts, payload)
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"SHA256 Credential={app_id}, Timestamp={ts}, Signature={sig}",
+    }
+    try:
+        with httpx.Client(timeout=20.0) as client:
+            resp = client.post(SHOPEE_API, content=payload.encode("utf-8"), headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+        if data.get("errors"):
+            logger.error(f"[afiliado] Shopee shortLink: {data['errors']}")
+            return None
+        short = ((data.get("data") or {}).get("generateShortLink") or {}).get("shortLink")
+        return short if short else None
+    except Exception as e:
+        logger.error(f"[afiliado] Shopee shortLink falhou: {e}")
+        return None
+
+
+def garantir_afiliado(oferta_loja: str, url: str) -> str:
+    """Retorna URL afiliada quando possível; senão a original (com log)."""
+    loja = (oferta_loja or "").lower()
+    if "mercado" in loja:
+        convertida = converter_mercadolivre(url)
+        if convertida:
+            return convertida
+        logger.warning("[afiliado] MELI sem conversão — enviando URL original")
+        return url
+    if "shopee" in loja:
+        convertida = converter_shopee(url)
+        if convertida:
+            return convertida
+        # offerLink da API já costuma ser afiliado
+        return url
+    return url

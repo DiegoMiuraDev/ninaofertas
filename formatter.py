@@ -23,7 +23,16 @@ def _preco_fmt(valor: float) -> str:
 
 
 def montar_mensagem(oferta: OfertaCapturada) -> str:
-    template = load_filtros().get("mensagem_template", TEMPLATE_PADRAO)
+    filtros = load_filtros()
+    eh_campanha = (oferta.categoria or "").lower() in {"campanha", "cupom", "promocao", "promoção"}
+
+    if eh_campanha:
+        template = filtros.get(
+            "mensagem_campanha_template",
+            "🎫 CAMPANHA / CUPOM SHOPEE!\n\n📌 {nome}\n\n🏪 {loja}\n\n👉 ACESSAR:\n{url}\n\n⏰ {hora}",
+        )
+    else:
+        template = filtros.get("mensagem_template", TEMPLATE_PADRAO)
 
     preco_anterior = oferta.preco_anterior if oferta.preco_anterior else oferta.preco
     desconto = oferta.desconto if oferta.desconto is not None else 0

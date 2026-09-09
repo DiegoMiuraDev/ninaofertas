@@ -2,6 +2,7 @@
 e envia para o WhatsApp. Isola erros por oferta/fonte — nada aqui derruba o bot."""
 from __future__ import annotations
 
+import affiliate
 import dedup
 import database
 import formatter
@@ -53,6 +54,7 @@ def _processar_oferta(session, oferta: OfertaCapturada, filtros: dict) -> None:
         return
 
     logger.info(f"Oferta ainda não enviada. ({motivo_dedup})")
+    oferta.url = affiliate.garantir_afiliado(oferta.loja, oferta.url)
     mensagem = formatter.montar_mensagem(oferta)
 
     logger.info("Enviando para WhatsApp...")

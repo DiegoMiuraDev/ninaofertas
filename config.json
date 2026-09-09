@@ -1,8 +1,8 @@
 {
-  "lojas": ["Amazon", "Mercado Livre", "Shopee"],
+  "lojas": ["Mercado Livre", "Shopee"],
   "categorias": [],
   "desconto_minimo": 15,
-  "preco_maximo": 1000,
+  "preco_maximo": 5000,
   "preco_minimo": 20,
   "termos_busca": [
     "óleo motor",
@@ -19,7 +19,18 @@
     "tapete automotivo",
     "cera automotiva",
     "compressor de ar portátil",
-    "capa banco carro"
+    "capa banco carro",
+    "aerofólio carro",
+    "spoiler traseiro",
+    "jogo de rodas",
+    "roda aro 17",
+    "roda aro 15",
+    "calota esportiva",
+    "pedaleira esportiva",
+    "volante esportivo",
+    "saia lateral carro",
+    "difusor traseiro",
+    "entrada de ar capô"
   ],
   "palavras_chave": [],
   "produtos_especificos": [],

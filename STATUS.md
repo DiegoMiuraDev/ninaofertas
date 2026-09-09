@@ -1,15 +1,16 @@
 # Status do projeto — onde paramos
 
-Última atualização: 2026-08-13
+Última atualização: 2026-09-07
 
 ## Foco atual das fontes
 
-- **Ativas:** Mercado Livre + Amazon + **Shopee** (API afiliados GraphQL)
-- **Desligadas do pipeline:** Pelando, Magalu (arquivos ainda no repo)
-- `config.json`: lojas Amazon/ML/Shopee; nicho automotivo via `termos_busca`
-- Shopee precisa de `SHOPEE_APP_ID` / `SHOPEE_APP_SECRET` (Open API do afiliado)
-- MELI precisa de `MERCADOLIVRE_APP_ID` / `MERCADOLIVRE_APP_SECRET` no `.env`
-- Amazon: scraping (pode 403); afiliado ainda não ligado
+- **Ativas:** Shopee (produtos + campanhas/cupons) + Mercado Livre
+- Amazon fora do pipeline ativo do canal
+- Sempre tenta link afiliado antes do envio (`affiliate.py`)
+- Shopee: API OK; `offerLink` já vem afiliado; campanhas via `shopeeOfferV2`
+- MELI search: app recebe 403 PolicyAgent no `/sites/MLB/search` (precisa revisar permissões/app)
+- MELI createLink: cookie expirou (401) — renovar `MERCADOLIVRE_AFFILIATE_COOKIE`
+- OpenAI: opcional depois (ranking/copy com gpt-4o-mini)
 
 
 ## ✅ O que já está pronto (feito e testado)

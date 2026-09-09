@@ -96,6 +96,7 @@ class ShopeeScraper(Scraper):
 
         ofertas: list[OfertaCapturada] = []
         with httpx.Client(timeout=self.timeout) as client:
+            ofertas.extend(self._buscar_campanhas(client))
             for termo in self._termos_busca():
                 # Escapa aspas na keyword pra não quebrar a query GraphQL.
                 keyword = termo.replace('"', '\\"')
@@ -134,6 +135,48 @@ class ShopeeScraper(Scraper):
                     if oferta:
                         ofertas.append(oferta)
         return ofertas
+
+    def _buscar_campanhas(self, client: httpx.Client) -> list[OfertaCapturada]:
+        """Promoções/coleções da Shopee (cupons e campanhas) com offerLink afiliado."""
+        query = """
+        {
+          shopeeOfferV2(sortType: 2, page: 1, limit: 15) {
+            nodes {
+              offerName
+              offerLink
+              originalLink
+              imageUrl
+              commissionRate
+              offerType
+            }
+          }
+        }
+        """
+        try:
+            data = self._graphql(client, query)
+        except Exception as e:
+            logger.warning(f"[Shopee] falha ao buscar campanhas: {e}")
+            return []
+
+        out: list[OfertaCapturada] = []
+        for item in (data.get("shopeeOfferV2") or {}).get("nodes") or []:
+            url = item.get("offerLink") or item.get("originalLink")
+            nome = item.get("offerName")
+            if not url or not nome:
+                continue
+            out.append(
+                OfertaCapturada(
+                    nome=f"[CAMPANHA] {nome}",
+                    preco=0.0,
+                    desconto=None,
+                    loja="Shopee",
+                    url=url,
+                    imagem=item.get("imageUrl"),
+                    categoria="campanha",
+                    sku=f"campanha:{hash(url) & 0xFFFFFFFF:x}",
+                )
+            )
+        return out
 
     def _parse_item(self, item: dict) -> OfertaCapturada | None:
         preco = _preco_float(item.get("priceMin") if item.get("priceMin") is not None else item.get("priceMax"))

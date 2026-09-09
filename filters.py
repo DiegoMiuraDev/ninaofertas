@@ -12,20 +12,24 @@ def _contem_alguma(texto: str, termos: list[str]) -> bool:
 def passa_nos_filtros(oferta: OfertaCapturada, filtros: dict) -> tuple[bool, str]:
     """Retorna (passou, motivo). `motivo` é usado apenas para log quando falha."""
 
-    preco_maximo = filtros.get("preco_maximo")
-    if preco_maximo and oferta.preco > preco_maximo:
-        return False, f"preço R${oferta.preco:.2f} acima do máximo R${preco_maximo:.2f}"
+    # Campanhas/cupons (Shopee Offer List) não têm preço de produto confiável.
+    eh_campanha = (oferta.categoria or "").lower() in {"campanha", "cupom", "promocao", "promoção"}
 
-    preco_minimo = filtros.get("preco_minimo")
-    if preco_minimo and oferta.preco < preco_minimo:
-        return False, f"preço R${oferta.preco:.2f} abaixo do mínimo R${preco_minimo:.2f}"
+    if not eh_campanha:
+        preco_maximo = filtros.get("preco_maximo")
+        if preco_maximo and oferta.preco > preco_maximo:
+            return False, f"preço R${oferta.preco:.2f} acima do máximo R${preco_maximo:.2f}"
 
-    desconto_minimo = filtros.get("desconto_minimo")
-    if desconto_minimo:
-        if oferta.desconto is None:
-            return False, "desconto desconhecido (não foi possível confirmar preço anterior)"
-        if oferta.desconto < desconto_minimo:
-            return False, f"desconto {oferta.desconto}% abaixo do mínimo {desconto_minimo}%"
+        preco_minimo = filtros.get("preco_minimo")
+        if preco_minimo and oferta.preco < preco_minimo:
+            return False, f"preço R${oferta.preco:.2f} abaixo do mínimo R${preco_minimo:.2f}"
+
+        desconto_minimo = filtros.get("desconto_minimo")
+        if desconto_minimo:
+            if oferta.desconto is None:
+                return False, "desconto desconhecido (não foi possível confirmar preço anterior)"
+            if oferta.desconto < desconto_minimo:
+                return False, f"desconto {oferta.desconto}% abaixo do mínimo {desconto_minimo}%"
 
     lojas = filtros.get("lojas")
     if lojas and oferta.loja and oferta.loja.lower() not in [l.lower() for l in lojas]:
