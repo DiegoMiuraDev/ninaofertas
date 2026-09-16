@@ -27,6 +27,9 @@ class OfertaCapturada:
     imagem: Optional[str] = None
     sku: Optional[str] = None
     capturado_em: datetime = None
+    # Proxies de "oferta quente" (quando a fonte informa).
+    vendas: Optional[int] = None
+    oferta_desde: Optional[datetime] = None
 
     def __post_init__(self):
         if self.capturado_em is None:

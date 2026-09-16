@@ -80,8 +80,21 @@ def get_session() -> Session:
 
 
 def upsert_oferta(session: Session, dados: dict) -> Oferta:
-    """Cria ou atualiza a oferta pela URL, preservando o preço anterior para exibição."""
-    oferta = session.query(Oferta).filter_by(url=dados["url"]).one_or_none()
+    """Cria ou atualiza a oferta. Prefere SKU+loja (estável); fallback pela URL."""
+    oferta = None
+    sku = dados.get("sku")
+    loja = dados.get("loja")
+    if sku:
+        # Pode haver duplicatas antigas no SQLite — pega a mais recente.
+        oferta = (
+            session.query(Oferta)
+            .filter_by(sku=sku, loja=loja)
+            .order_by(Oferta.id.desc())
+            .first()
+        )
+    if oferta is None:
+        oferta = session.query(Oferta).filter_by(url=dados["url"]).one_or_none()
+
     if oferta is None:
         oferta = Oferta(**dados)
         session.add(oferta)
@@ -93,21 +106,50 @@ def upsert_oferta(session: Session, dados: dict) -> Oferta:
         oferta.desconto = dados.get("desconto")
         oferta.loja = dados.get("loja")
         oferta.categoria = dados.get("categoria")
+        # Só atualiza URL se não conflitar com outra linha (unique).
+        if oferta.url != dados["url"]:
+            conflito = session.query(Oferta).filter_by(url=dados["url"]).first()
+            if conflito is None or conflito.id == oferta.id:
+                oferta.url = dados["url"]
         oferta.imagem = dados.get("imagem")
-        oferta.sku = dados.get("sku")
+        oferta.sku = dados.get("sku") or oferta.sku
         oferta.capturado_em = datetime.now()
     session.flush()
     return oferta
 
 
 def ultimo_envio(session: Session, oferta_id: int) -> Envio | None:
-    """Considera apenas envios com sucesso — uma falha de rede não deve
-    contar como "já enviado" e travar o retry no próximo ciclo."""
+    """Último envio com sucesso no WhatsApp (falha de rede não bloqueia retry)."""
     return (
         session.query(Envio)
         .filter_by(oferta_id=oferta_id, status="sucesso")
         .order_by(Envio.enviado_em.desc())
         .first()
+    )
+
+
+def ja_conhecida(session: Session, oferta_id: int) -> bool:
+    """True se a oferta já foi vista no baseline ou enviada com sucesso."""
+    return (
+        session.query(Envio.id)
+        .filter(
+            Envio.oferta_id == oferta_id,
+            Envio.status.in_(("sucesso", "visto")),
+        )
+        .first()
+        is not None
+    )
+
+
+def registrar_visto(session: Session, oferta_id: int, preco: float) -> Envio:
+    """Marca a oferta como já existente na partida do bot (sem WhatsApp)."""
+    return registrar_envio(
+        session,
+        oferta_id=oferta_id,
+        grupo="",
+        mensagem="",
+        preco=preco,
+        status="visto",
     )
 
 
@@ -140,3 +182,47 @@ def contar_envios_ultima_hora(session: Session) -> int:
 def contar_envios_hoje(session: Session) -> int:
     inicio_do_dia = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     return contar_envios_desde(session, inicio_do_dia)
+
+
+def minutos_desde_ultimo_envio(session: Session) -> float | None:
+    """Minutos desde o último envio com sucesso. None se nunca enviou."""
+    ultimo = (
+        session.query(Envio.enviado_em)
+        .filter(Envio.status == "sucesso")
+        .order_by(Envio.enviado_em.desc())
+        .first()
+    )
+    if not ultimo or not ultimo[0]:
+        return None
+    return (datetime.now() - ultimo[0]).total_seconds() / 60.0
+
+
+def sku_ja_enviado(
+    session: Session,
+    sku: str,
+    loja: str | None = None,
+    exceto_oferta_id: int | None = None,
+) -> bool:
+    """True se algum envio com sucesso já usou este SKU (mesmo produto, outra URL)."""
+    q = (
+        session.query(Envio.id)
+        .join(Oferta, Oferta.id == Envio.oferta_id)
+        .filter(Envio.status == "sucesso", Oferta.sku == sku)
+    )
+    if loja:
+        q = q.filter(Oferta.loja == loja)
+    if exceto_oferta_id is not None:
+        q = q.filter(Oferta.id != exceto_oferta_id)
+    return q.first() is not None
+
+
+def nomes_precos_enviados_recentes(session: Session, dias: int = 30) -> list[tuple[str, float]]:
+    """Nome + preço das ofertas já enviadas com sucesso no período."""
+    desde = datetime.now() - timedelta(days=dias)
+    rows = (
+        session.query(Oferta.nome, Envio.preco_enviado)
+        .join(Envio, Envio.oferta_id == Oferta.id)
+        .filter(Envio.status == "sucesso", Envio.enviado_em >= desde)
+        .all()
+    )
+    return [(n or "", float(p) if p is not None else 0.0) for n, p in rows]

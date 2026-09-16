@@ -34,7 +34,40 @@ def _shopee_sign(app_id: str, secret: str, timestamp: int, payload: str) -> str:
 
 def _ja_parece_afiliado_ml(url: str) -> bool:
     u = url.lower()
-    return "matt_tool=" in u or "matt_word=" in u or "/sec/" in u or "click1.mercadolivre" in u
+    return (
+        "meli.la/" in u
+        or "matt_tool=" in u
+        or "matt_word=" in u
+        or "/sec/" in u
+        or "click1.mercadolivre" in u
+    )
+
+
+def _extrair_url_afiliada(data) -> str | None:
+    """createLink devolve snake_case: urls[].short_url (ex.: https://meli.la/xxxx)."""
+    chaves = (
+        "short_url",
+        "shortUrl",
+        "affiliateLink",
+        "affineLink",
+        "url",
+        "link",
+    )
+    if isinstance(data, dict):
+        for key in chaves:
+            val = data.get(key)
+            if isinstance(val, str) and val.startswith("http") and key != "text":
+                if "meli.la/" in val.lower() or key in ("short_url", "shortUrl", "affiliateLink"):
+                    return val
+        if isinstance(data.get("urls"), list) and data["urls"]:
+            return _extrair_url_afiliada(data["urls"][0])
+        # fallback: pega meli.la dentro do texto
+        text = data.get("text")
+        if isinstance(text, str) and "meli.la/" in text:
+            for parte in text.split():
+                if "meli.la/" in parte and parte.startswith("http"):
+                    return parte.strip()
+    return None
 
 
 def _ja_parece_afiliado_shopee(url: str) -> bool:
@@ -83,18 +116,10 @@ def converter_mercadolivre(url: str) -> str | None:
         logger.error(f"[afiliado] MELI createLink falhou: {e}")
         return None
 
-    # formatos possíveis da resposta
-    for key in ("shortUrl", "affiliateLink", "url", "link"):
-        if isinstance(data.get(key), str) and data[key].startswith("http"):
-            return data[key]
-    if isinstance(data.get("urls"), list) and data["urls"]:
-        item = data["urls"][0]
-        if isinstance(item, str) and item.startswith("http"):
-            return item
-        if isinstance(item, dict):
-            for key in ("shortUrl", "affiliateLink", "url", "link", "affineLink"):
-                if isinstance(item.get(key), str) and item[key].startswith("http"):
-                    return item[key]
+    convertida = _extrair_url_afiliada(data)
+    if convertida:
+        logger.info(f"[afiliado] MELI convertida: {convertida}")
+        return convertida
     logger.error(f"[afiliado] MELI createLink resposta inesperada: {str(data)[:240]}")
     return None
 

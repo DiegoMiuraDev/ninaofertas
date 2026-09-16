@@ -3,16 +3,15 @@
 Requer `SHOPEE_APP_ID` e `SHOPEE_APP_SECRET` no `.env` (Open API do painel
 de afiliados). Sem credenciais, a fonte é pulada com aviso.
 
-Docs / playground não oficiais de referência:
-https://www.affiliateshopee.com.br/documentacao
-
-O campo `offerLink` já vem com tracking de afiliado — usamos ele na mensagem.
+Busca ordenada por mais recentes (sortType=1), não por mais vendidos — assim
+priorizamos oferta quente em vez de catálogo antigo com estoque parado.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import time
+from datetime import datetime, timezone
 
 import httpx
 
@@ -21,6 +20,9 @@ from logger import logger
 from scraper.base import OfertaCapturada, Scraper
 
 API_URL = "https://open-api.affiliate.shopee.com.br/graphql"
+
+# 1 = mais recentes | 2 = mais vendidos (catálogo antigo)
+_SORT_MAIS_RECENTES = 1
 
 
 def _assinar(app_id: str, secret: str, timestamp: int, payload: str) -> str:
@@ -38,13 +40,24 @@ def _preco_float(valor) -> float | None:
 
 
 def _desconto_pct(valor) -> float | None:
-    """priceDiscountRate pode vir como 15, '15' ou '0.15'."""
     d = _preco_float(valor)
     if d is None:
         return None
     if 0 < d <= 1:
         return round(d * 100, 1)
     return round(d, 1)
+
+
+def _ts_para_dt(valor) -> datetime | None:
+    if valor is None:
+        return None
+    try:
+        ts = int(valor)
+        if ts <= 0:
+            return None
+        return datetime.fromtimestamp(ts, tz=timezone.utc)
+    except (TypeError, ValueError, OSError, OverflowError):
+        return None
 
 
 class ShopeeScraper(Scraper):
@@ -96,16 +109,16 @@ class ShopeeScraper(Scraper):
 
         ofertas: list[OfertaCapturada] = []
         with httpx.Client(timeout=self.timeout) as client:
-            ofertas.extend(self._buscar_campanhas(client))
+            if load_filtros().get("aceitar_campanhas", False):
+                ofertas.extend(self._buscar_campanhas(client))
             for termo in self._termos_busca():
-                # Escapa aspas na keyword pra não quebrar a query GraphQL.
                 keyword = termo.replace('"', '\\"')
                 query = f"""
                 {{
                   productOfferV2(
                     keyword: "{keyword}",
                     listType: 0,
-                    sortType: 2,
+                    sortType: {_SORT_MAIS_RECENTES},
                     page: 1,
                     limit: 20
                   ) {{
@@ -119,6 +132,8 @@ class ShopeeScraper(Scraper):
                       priceMax
                       priceDiscountRate
                       shopName
+                      sales
+                      periodStartTime
                     }}
                   }}
                 }}
@@ -134,13 +149,13 @@ class ShopeeScraper(Scraper):
                     oferta = self._parse_item(item)
                     if oferta:
                         ofertas.append(oferta)
+        logger.info(f"[Shopee] {len(ofertas)} ofertas capturadas.")
         return ofertas
 
     def _buscar_campanhas(self, client: httpx.Client) -> list[OfertaCapturada]:
-        """Promoções/coleções da Shopee (cupons e campanhas) com offerLink afiliado."""
         query = """
         {
-          shopeeOfferV2(sortType: 2, page: 1, limit: 15) {
+          shopeeOfferV2(sortType: 1, page: 1, limit: 15) {
             nodes {
               offerName
               offerLink
@@ -148,6 +163,7 @@ class ShopeeScraper(Scraper):
               imageUrl
               commissionRate
               offerType
+              periodStartTime
             }
           }
         }
@@ -174,6 +190,7 @@ class ShopeeScraper(Scraper):
                     imagem=item.get("imageUrl"),
                     categoria="campanha",
                     sku=f"campanha:{hash(url) & 0xFFFFFFFF:x}",
+                    oferta_desde=_ts_para_dt(item.get("periodStartTime")),
                 )
             )
         return out
@@ -192,6 +209,13 @@ class ShopeeScraper(Scraper):
         if desconto and desconto > 0 and desconto < 100:
             preco_anterior = round(preco / (1 - desconto / 100), 2)
 
+        vendas = None
+        if item.get("sales") is not None:
+            try:
+                vendas = int(item["sales"])
+            except (TypeError, ValueError):
+                vendas = None
+
         return OfertaCapturada(
             nome=item.get("productName") or "",
             preco=preco,
@@ -201,4 +225,6 @@ class ShopeeScraper(Scraper):
             url=url,
             imagem=item.get("imageUrl"),
             sku=str(item["itemId"]) if item.get("itemId") is not None else None,
+            vendas=vendas,
+            oferta_desde=_ts_para_dt(item.get("periodStartTime")),
         )

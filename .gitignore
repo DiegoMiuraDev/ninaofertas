@@ -1,8 +1,12 @@
 .env
 venv/
+venv.linux.bak/
 __pycache__/
 *.pyc
 ofertas.db
 ofertas.db-journal
 logs/
 whatsapp-qr.png
+evolution-connect.json
+evolution-create.json
+.cursor/
