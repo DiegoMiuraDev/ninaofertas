@@ -6,18 +6,19 @@ Depois: só ofertas novas/quentes — com freio anti-ban no WhatsApp.
 from __future__ import annotations
 
 import affiliate
+import cupom_card
 import dedup
 import database
 import formatter
 import whatsapp
-from config import load_filtros, settings
+from config import canal_atual, grupo_whatsapp, load_filtros, nome_canal, settings
 from filters import passa_nos_filtros
 from logger import logger
 from scraper import FONTES
 from scraper.base import OfertaCapturada
 
-_baseline_ciclos_feitos = 0
-_ciclo_n = 0
+_baseline_ciclos_feitos: dict[str, int] = {}
+_ciclo_n: dict[str, int] = {}
 
 
 def _intercalar_lojas(ofertas: list[OfertaCapturada], prioridade: str) -> list[OfertaCapturada]:
@@ -34,6 +35,15 @@ def _intercalar_lojas(ofertas: list[OfertaCapturada], prioridade: str) -> list[O
             if filas[loja]:
                 out.append(filas[loja].popleft())
     return out
+
+
+def _ordenar_envio(ofertas: list[OfertaCapturada], n: int, prioridade: str) -> list[OfertaCapturada]:
+    cupons = [o for o in ofertas if (o.categoria or "").lower() == "cupom"]
+    produtos = [o for o in ofertas if (o.categoria or "").lower() != "cupom"]
+    produtos = _intercalar_lojas(produtos, prioridade)
+    if n % 4 == 0 and cupons:
+        return cupons[:1] + produtos + cupons[1:]
+    return produtos + cupons
 
 
 def _salvar_oferta(session, oferta: OfertaCapturada):
@@ -60,28 +70,24 @@ def _baseline_oferta(session, oferta: OfertaCapturada, filtros: dict) -> bool:
         return False
 
     oferta_db = _salvar_oferta(session, oferta)
-    if database.ja_conhecida(session, oferta_db.id):
+    grupo = grupo_whatsapp()
+    if database.ja_conhecida(session, oferta_db.id, grupo=grupo):
         return False
-    database.registrar_visto(session, oferta_db.id, oferta.preco)
+    database.registrar_visto(session, oferta_db.id, oferta.preco, grupo=grupo)
     return True
 
 
-def _freio_anti_ban(session, filtros: dict) -> tuple[bool, str]:
-    """Ritmo estilo grupo de ofertas: rajada curta + pausa, sem spam infinito.
-
-    Ex.: 3–4 msgs em poucos minutos, depois ~25 min de silêncio.
-    """
+def _freio_anti_ban(session, filtros: dict, grupo: str, oferta: OfertaCapturada | None = None) -> tuple[bool, str]:
+    """Ritmo da conta inteira: o WhatsApp bane o número, não o grupo."""
     from datetime import datetime, timedelta
 
-    decorridos = database.minutos_desde_ultimo_envio(session)
+    decorridos_conta = database.minutos_desde_ultimo_envio(session)
 
-    # Espaço mínimo entre qualquer envio (ex.: 2 min).
     intervalo_min = filtros.get("intervalo_minutos_entre_ofertas")
-    if intervalo_min and decorridos is not None and decorridos < float(intervalo_min):
-        falta = float(intervalo_min) - decorridos
-        return False, f"freio: intervalo {intervalo_min} min na rajada (faltam ~{falta:.0f} min)"
+    if intervalo_min and decorridos_conta is not None and decorridos_conta < float(intervalo_min):
+        falta = float(intervalo_min) - decorridos_conta
+        return False, f"freio: intervalo {intervalo_min} min na conta (faltam ~{falta:.0f} min)"
 
-    # Se já mandou N na janela curta, obriga pausa longa antes da próxima rajada.
     max_rajada = int(filtros.get("max_ofertas_por_rajada") or 0)
     janela = float(filtros.get("janela_rajada_minutos") or 12)
     pausa = float(filtros.get("pausa_entre_rajadas_minutos") or 0)
@@ -89,20 +95,33 @@ def _freio_anti_ban(session, filtros: dict) -> tuple[bool, str]:
         n_janela = database.contar_envios_desde(
             session, datetime.now() - timedelta(minutes=janela)
         )
-        if n_janela >= max_rajada and decorridos is not None and decorridos < pausa:
-            falta = pausa - decorridos
+        if n_janela >= max_rajada and decorridos_conta is not None and decorridos_conta < pausa:
+            falta = pausa - decorridos_conta
             return False, (
-                f"freio: rajada de {n_janela}/{max_rajada} na janela — "
+                f"freio: rajada de {n_janela}/{max_rajada} na conta — "
                 f"pausa {pausa:.0f} min (faltam ~{falta:.0f} min)"
             )
 
-    max_hora = filtros.get("max_ofertas_por_hora")
-    if max_hora and database.contar_envios_ultima_hora(session) >= int(max_hora):
-        return False, f"freio: limite {max_hora}/hora atingido"
+    max_hora_grupo = filtros.get("max_ofertas_por_hora")
+    if max_hora_grupo and database.contar_envios_ultima_hora(session, grupo=grupo) >= int(max_hora_grupo):
+        return False, f"freio: limite {max_hora_grupo}/hora neste grupo"
 
-    max_dia = filtros.get("max_ofertas_por_dia")
-    if max_dia and database.contar_envios_hoje(session) >= int(max_dia):
-        return False, f"freio: limite {max_dia}/dia atingido"
+    max_hora_global = filtros.get("max_ofertas_globais_por_hora")
+    if max_hora_global and database.contar_envios_ultima_hora(session) >= int(max_hora_global):
+        return False, f"freio: limite {max_hora_global}/hora na conta (os dois grupos juntos)"
+
+    max_dia_grupo = filtros.get("max_ofertas_por_dia")
+    if max_dia_grupo and database.contar_envios_hoje(session, grupo=grupo) >= int(max_dia_grupo):
+        return False, f"freio: limite {max_dia_grupo}/dia neste grupo"
+
+    max_dia_global = filtros.get("max_ofertas_globais_por_dia")
+    if max_dia_global and database.contar_envios_hoje(session) >= int(max_dia_global):
+        return False, f"freio: limite {max_dia_global}/dia na conta (os dois grupos juntos)"
+
+    if oferta and (oferta.categoria or "").lower() == "cupom":
+        max_cupom = int(filtros.get("max_cupons_por_dia") or 2)
+        if database.contar_cupons_hoje(session, grupo=grupo) >= max_cupom:
+            return False, f"freio: já foram {max_cupom} cupons hoje neste grupo"
 
     return True, ""
 
@@ -115,6 +134,7 @@ def _processar_oferta(session, oferta: OfertaCapturada, filtros: dict) -> str:
         return "pulou"
 
     oferta_db = _salvar_oferta(session, oferta)
+    grupo = grupo_whatsapp()
 
     pode_enviar, motivo_dedup = dedup.deve_enviar(
         session,
@@ -124,35 +144,45 @@ def _processar_oferta(session, oferta: OfertaCapturada, filtros: dict) -> str:
         nome=oferta.nome,
         sku=oferta.sku,
         loja=oferta.loja,
+        grupo=grupo,
     )
     if not pode_enviar:
-        # Marca como vista pra não insistir em duplicata nos próximos ciclos.
         if "duplicata" in motivo_dedup or "igual/parecida" in motivo_dedup:
-            if not database.ja_conhecida(session, oferta_db.id):
-                database.registrar_visto(session, oferta_db.id, oferta.preco)
+            if not database.ja_conhecida(session, oferta_db.id, grupo=grupo):
+                database.registrar_visto(session, oferta_db.id, oferta.preco, grupo=grupo)
         logger.debug(f"Pulando '{oferta.nome[:60]}': {motivo_dedup}")
         return "pulou"
 
-    ok_ritmo, motivo_freio = _freio_anti_ban(session, filtros)
+    ok_ritmo, motivo_freio = _freio_anti_ban(session, filtros, grupo, oferta)
     if not ok_ritmo:
-        logger.warning(motivo_freio)
+        logger.warning(f"[{nome_canal()}] {motivo_freio}")
         return "freio"
 
-    logger.info(f"Oferta NOVA: {oferta.nome}")
+    logger.info(f"[{nome_canal()}] Oferta NOVA: {oferta.nome}")
     if oferta.desconto is not None:
         logger.info(f"Desconto: {oferta.desconto}%")
     logger.info(f"Motivo: {motivo_dedup}")
 
     oferta.url = affiliate.garantir_afiliado(oferta.loja, oferta.url)
+    if oferta.url_carrinho:
+        oferta.url_carrinho = affiliate.garantir_afiliado(oferta.loja, oferta.url_carrinho)
+    if (oferta.categoria or "").lower() == "cupom":
+        try:
+            card = cupom_card.gerar_card(oferta)
+            if card:
+                oferta.imagem = card
+        except Exception as e:
+            logger.warning(f"Não deu pra gerar print do cupom: {e}")
+
     mensagem = formatter.montar_mensagem(oferta)
 
-    logger.info("Enviando para WhatsApp...")
-    sucesso = whatsapp.enviar_mensagem(mensagem, imagem=oferta.imagem)
+    logger.info(f"[{nome_canal()}] Enviando para WhatsApp...")
+    sucesso = whatsapp.enviar_mensagem(mensagem, imagem=oferta.imagem, grupo=grupo)
 
     database.registrar_envio(
         session,
         oferta_id=oferta_db.id,
-        grupo=settings.whatsapp_group_id,
+        grupo=grupo,
         mensagem=mensagem,
         preco=oferta.preco,
         status="sucesso" if sucesso else "falha",
@@ -166,9 +196,11 @@ def _processar_oferta(session, oferta: OfertaCapturada, filtros: dict) -> str:
 
 
 def ciclo() -> None:
-    global _baseline_ciclos_feitos, _ciclo_n
+    canal = canal_atual()
+    feitos = _baseline_ciclos_feitos.get(canal, 0)
+    n = _ciclo_n.get(canal, 0)
 
-    logger.info("Buscando novas ofertas...")
+    logger.info(f"[{nome_canal()}] Buscando novas ofertas...")
     filtros = load_filtros()
     baseline_alvo = int(filtros.get("baseline_ciclos") or 5)
     max_por_ciclo = int(filtros.get("max_ofertas_por_ciclo") or 1)
@@ -177,17 +209,19 @@ def ciclo() -> None:
     for fonte in FONTES:
         todas_ofertas.extend(fonte.executar())
 
-    _ciclo_n += 1
-    prioridade = "Shopee" if _ciclo_n % 2 == 1 else "Mercado Livre"
-    todas_ofertas = _intercalar_lojas(todas_ofertas, prioridade)
+    n += 1
+    _ciclo_n[canal] = n
+    prioridade = "Shopee" if n % 2 == 1 else "Mercado Livre"
+    todas_ofertas = _ordenar_envio(todas_ofertas, n, prioridade)
 
-    logger.info(f"{len(todas_ofertas)} ofertas encontradas na varredura.")
+    logger.info(f"[{nome_canal()}] {len(todas_ofertas)} ofertas encontradas na varredura.")
 
     with database.get_session() as session:
-        if _baseline_ciclos_feitos < baseline_alvo:
-            _baseline_ciclos_feitos += 1
+        if feitos < baseline_alvo:
+            feitos += 1
+            _baseline_ciclos_feitos[canal] = feitos
             logger.info(
-                f"Baseline {_baseline_ciclos_feitos}/{baseline_alvo}: "
+                f"[{nome_canal()}] Baseline {feitos}/{baseline_alvo}: "
                 "marcando estoque atual (sem enviar)."
             )
             novas_marcadas = 0
@@ -197,11 +231,11 @@ def ciclo() -> None:
                         novas_marcadas += 1
                 except Exception as e:
                     logger.error(f"Erro no baseline '{oferta.nome[:60]}': {e}")
-            logger.info(f"Baseline: +{novas_marcadas} ofertas marcadas neste ciclo.")
-            if _baseline_ciclos_feitos >= baseline_alvo:
+            logger.info(f"[{nome_canal()}] Baseline: +{novas_marcadas} ofertas marcadas neste ciclo.")
+            if feitos >= baseline_alvo:
                 logger.info(
-                    "Baseline concluída. Próximas novidades serão blipadas "
-                    "com freio anti-ban (intervalo/limites do config.json)."
+                    f"[{nome_canal()}] Baseline concluída. Próximas novidades serão blipadas "
+                    "com freio anti-ban."
                 )
         else:
             enviadas_ciclo = 0
@@ -217,9 +251,9 @@ def ciclo() -> None:
                     enviadas_ciclo += 1
                     if enviadas_ciclo >= max_por_ciclo:
                         logger.info(
-                            f"Freio anti-ban: já enviou {enviadas_ciclo} neste ciclo "
+                            f"[{nome_canal()}] Freio anti-ban: já enviou {enviadas_ciclo} neste ciclo "
                             f"(máx {max_por_ciclo})."
                         )
                         break
 
-    logger.info(f"Próxima verificação em {settings.check_interval}s.")
+    logger.info(f"[{nome_canal()}] Próxima verificação em {settings.check_interval}s.")

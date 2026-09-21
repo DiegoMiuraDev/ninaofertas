@@ -1,8 +1,6 @@
 """Monta a mensagem do WhatsApp a partir do template configurável em config.json."""
 from __future__ import annotations
 
-from datetime import datetime
-
 from config import load_filtros
 from scraper.base import OfertaCapturada
 
@@ -22,11 +20,16 @@ def _preco_fmt(valor: float) -> str:
     return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def _eh_cupom(oferta: OfertaCapturada) -> bool:
+    return (oferta.categoria or "").lower() in {"cupom", "campanha", "promocao", "promoção"}
+
+
 def montar_mensagem(oferta: OfertaCapturada) -> str:
     filtros = load_filtros()
-    eh_campanha = (oferta.categoria or "").lower() in {"campanha", "cupom", "promocao", "promoção"}
+    if _eh_cupom(oferta) and (oferta.categoria or "").lower() == "cupom":
+        return _mensagem_cupom(oferta)
 
-    if eh_campanha:
+    if _eh_cupom(oferta):
         template = filtros.get(
             "mensagem_campanha_template",
             "🎫 CAMPANHA / CUPOM SHOPEE!\n\n📌 {nome}\n\n🏪 {loja}\n\n👉 ACESSAR:\n{url}\n\n⏰ {hora}",
@@ -45,4 +48,25 @@ def montar_mensagem(oferta: OfertaCapturada) -> str:
         loja=oferta.loja,
         url=oferta.url,
         hora=oferta.capturado_em.strftime("%H:%M"),
+    )
+
+
+def _mensagem_cupom(oferta: OfertaCapturada) -> str:
+    linha = oferta.nome
+    if oferta.codigo_cupom and oferta.codigo_cupom not in linha:
+        linha = f"{oferta.beneficio or linha}: {oferta.codigo_cupom}"
+    loja = (oferta.loja or "").lower()
+    if "shopee" in loja:
+        texto = (
+            "🎁 CUPOM SHOPEE 🎁\n\n"
+            f"🎫 {linha}\n\n"
+            f"✅ Resgate aqui:\n{oferta.url}"
+        )
+        if oferta.url_carrinho:
+            texto += f"\n\n🛒 Carrinho: {oferta.url_carrinho}"
+        return texto
+    return (
+        "🔥 Cupom Mercado Livre\n\n"
+        f"🎫 {linha}\n\n"
+        f"✅ Resgate aqui:\n{oferta.url}"
     )

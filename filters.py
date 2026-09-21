@@ -146,6 +146,77 @@ _FOCO_CASA_PADRAO = (
     "elastico cabelo",
 )
 
+_BOMBA_AUTO = (
+    "motor",
+    "radiador",
+    "arrefecimento",
+    "automot",
+    "carro",
+    "gol ",
+    "fiat",
+    "volkswagen",
+    "vw ",
+    "chevrolet",
+    "honda",
+    "toyota",
+    "ford",
+    "hyundai",
+    "renault",
+    "nissan",
+    "peugeot",
+    "palio",
+    "uno ",
+    "onix",
+    "celta",
+    "corsa",
+    "kombi",
+    "fusca",
+    "saveiro",
+    "siena",
+    "civic",
+    "corolla",
+    "hilux",
+    "cabeçote",
+    "cabecote",
+)
+
+_BOMBA_NAO_AUTO = (
+    "irrig",
+    "centrifug",
+    "piscina",
+    "poco",
+    "poço",
+    "cisterna",
+    "submers",
+    "aspersor",
+    "horta",
+    "drenagem",
+    "esgoto",
+    "chafariz",
+    "pressurizador",
+    "sap ",
+    "lavadora",
+    "alta pressao",
+    "alta pressão",
+    "hidropon",
+)
+
+
+def _contem_alguma(texto: str, termos: list[str]) -> bool:
+    texto_lower = texto.lower()
+    return any(termo.lower() in texto_lower for termo in termos)
+
+
+def _bomba_dagua_ok_no_auto(nome: str) -> bool:
+    """Bomba d'água só vale se for de motor/carro, não irrigação/centrífuga."""
+    n = nome.lower().replace("á", "a").replace("à", "a")
+    if "bomba" not in n or "agua" not in n:
+        return True
+    if _contem_alguma(n, list(_BOMBA_NAO_AUTO)):
+        return False
+    return _contem_alguma(n, list(_BOMBA_AUTO))
+
+
 _BLOQUEIO_AUTO_PADRAO = (
     "automot",
     "para carro",
@@ -168,11 +239,6 @@ _BLOQUEIO_AUTO_PADRAO = (
     "p/ moto",
     "veicular",
 )
-
-
-def _contem_alguma(texto: str, termos: list[str]) -> bool:
-    texto_lower = texto.lower()
-    return any(termo.lower() in texto_lower for termo in termos)
 
 
 _BLOQUEIO_INFANTIL_PADRAO = (
@@ -258,13 +324,28 @@ def _nome_do_nicho(nome: str, termos: list[str]) -> bool:
 def passa_nos_filtros(oferta: OfertaCapturada, filtros: dict) -> tuple[bool, str]:
     """Retorna (passou, motivo). `motivo` é usado apenas para log quando falha."""
 
+    cat = (oferta.categoria or "").lower()
+    eh_cupom = cat == "cupom"
+    eh_campanha = cat in {"campanha", "promocao", "promoção"}
+
+    if eh_cupom:
+        if filtros.get("aceitar_cupons") is False:
+            return False, "cupons desabilitados no config"
+        if _eh_conteudo_infantil(oferta.nome, filtros):
+            return False, "conteúdo infantil bloqueado"
+        lojas = filtros.get("lojas")
+        if lojas and oferta.loja and oferta.loja.lower() not in [l.lower() for l in lojas]:
+            return False, f"loja '{oferta.loja}' não está na lista permitida"
+        return True, ""
+
     if _fora_do_foco(oferta.nome, filtros):
         return False, "produto fora do foco do grupo"
 
+    if filtros.get("nicho") == "auto" and not _bomba_dagua_ok_no_auto(oferta.nome):
+        return False, "bomba d'água fora do automotivo"
+
     if _eh_conteudo_infantil(oferta.nome, filtros):
         return False, "conteúdo infantil bloqueado"
-
-    eh_campanha = (oferta.categoria or "").lower() in {"campanha", "cupom", "promocao", "promoção"}
 
     if eh_campanha:
         if filtros.get("aceitar_campanhas") is False:
@@ -321,7 +402,15 @@ def passa_nos_filtros(oferta: OfertaCapturada, filtros: dict) -> tuple[bool, str
         or list(_FOCO_CASA_PADRAO)
     )
     if termos_nicho and not _nome_do_nicho(oferta.nome, termos_nicho):
-        return False, "fora do nicho casa/feminino"
+        n = oferta.nome.lower().replace("á", "a")
+        bomba_auto = (
+            filtros.get("nicho") == "auto"
+            and "bomba" in n
+            and "agua" in n
+            and _bomba_dagua_ok_no_auto(oferta.nome)
+        )
+        if not bomba_auto:
+            return False, "fora do nicho do grupo"
 
     produtos_especificos = filtros.get("produtos_especificos")
     if produtos_especificos and not _contem_alguma(oferta.nome, produtos_especificos):

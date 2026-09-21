@@ -132,6 +132,11 @@ class MercadoLivreScraper(Scraper):
             or []
         )
 
+    def _categorias_meli(self) -> tuple[str, ...]:
+        filtros = load_filtros()
+        cats = filtros.get("categorias_meli") or CATEGORIAS_CASA
+        return tuple(cats)
+
     def buscar(self) -> list[OfertaCapturada]:
         vistas: set[str] = set()
         ofertas: list[OfertaCapturada] = []
@@ -143,7 +148,7 @@ class MercadoLivreScraper(Scraper):
 
     def _buscar_ofertas_categoria(self, client: httpx.Client, vistas: set[str]) -> list[OfertaCapturada]:
         out: list[OfertaCapturada] = []
-        for cat in CATEGORIAS_CASA:
+        for cat in self._categorias_meli():
             for page in range(1, 4):
                 params = {"category": cat}
                 if page > 1:

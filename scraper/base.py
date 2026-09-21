@@ -30,6 +30,11 @@ class OfertaCapturada:
     # Proxies de "oferta quente" (quando a fonte informa).
     vendas: Optional[int] = None
     oferta_desde: Optional[datetime] = None
+    codigo_cupom: Optional[str] = None
+    min_gasto: Optional[float] = None
+    url_carrinho: Optional[str] = None
+    beneficio: Optional[str] = None
+    validade: Optional[str] = None
 
     def __post_init__(self):
         if self.capturado_em is None:

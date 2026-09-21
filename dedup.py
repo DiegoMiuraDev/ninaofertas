@@ -55,21 +55,26 @@ def deve_enviar(
     nome: str = "",
     sku: str | None = None,
     loja: str | None = None,
+    grupo: str | None = None,
 ) -> tuple[bool, str]:
-    envio_anterior = database.ultimo_envio(session, oferta_id)
+    envio_anterior = database.ultimo_envio(session, oferta_id, grupo=grupo)
 
     if envio_anterior is None:
-        if database.ja_conhecida(session, oferta_id):
+        if database.ja_conhecida(session, oferta_id, grupo=grupo):
             return False, "já conhecida no baseline (antes do bot subir)"
 
         # Mesmo SKU já foi enviado em outra linha de oferta.
-        if sku and database.sku_ja_enviado(session, sku, loja, exceto_oferta_id=oferta_id):
+        if sku and database.sku_ja_enviado(
+            session, sku, loja, exceto_oferta_id=oferta_id, grupo=grupo
+        ):
             return False, "SKU já enviado anteriormente (duplicata)"
 
         # Mesmo produto com título/preço quase iguais (SKU diferente).
         nome_norm = normalizar_nome(nome)
         if nome_norm:
-            for outro_nome, outro_preco in database.nomes_precos_enviados_recentes(session, dias=30):
+            for outro_nome, outro_preco in database.nomes_precos_enviados_recentes(
+                session, dias=30, grupo=grupo
+            ):
                 outro_norm = normalizar_nome(outro_nome)
                 if _nomes_parecidos(nome_norm, outro_norm) and _precos_parecidos(preco_atual, outro_preco):
                     return False, "oferta igual/parecida já enviada"

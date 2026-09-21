@@ -6,6 +6,7 @@ __pycache__/
 ofertas.db
 ofertas.db-journal
 logs/
+data/
 whatsapp-qr.png
 evolution-connect.json
 evolution-create.json

@@ -1,8 +1,10 @@
-"""Carrega variáveis de ambiente (.env) e critérios de filtro (config.json)."""
+"""Carrega variáveis de ambiente (.env) e critérios de filtro por canal."""
 from __future__ import annotations
 
 import json
 import os
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -10,6 +12,52 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
+
+# achadinhos = casa/feminino | auto = peças automotivas (Nina Ofertas)
+_canal: ContextVar[str] = ContextVar("canal", default="achadinhos")
+
+CANAIS = {
+    "achadinhos": {
+        "arquivo": "config.json",
+        "grupo_env": "WHATSAPP_GROUP_ID",
+        "nome": "Achadinhos da Nina",
+        "ativo": True,
+    },
+    "auto": {
+        "arquivo": "config.auto.json",
+        "grupo_env": "WHATSAPP_GROUP_ID_AUTO",
+        "nome": "Nina Ofertas",
+        "ativo": False,
+    },
+}
+
+
+def canais_ativos() -> tuple[str, ...]:
+    return tuple(k for k, v in CANAIS.items() if v.get("ativo", True))
+
+
+@contextmanager
+def usar_canal(canal: str):
+    if canal not in CANAIS:
+        raise ValueError(f"Canal desconhecido: {canal}")
+    token = _canal.set(canal)
+    try:
+        yield
+    finally:
+        _canal.reset(token)
+
+
+def canal_atual() -> str:
+    return _canal.get()
+
+
+def nome_canal() -> str:
+    return str(CANAIS[_canal.get()]["nome"])
+
+
+def grupo_whatsapp() -> str:
+    env_name = str(CANAIS[_canal.get()]["grupo_env"])
+    return os.getenv(env_name, "") or os.getenv("WHATSAPP_GROUP_ID", "")
 
 
 def _env_int(name: str, default: int) -> int:
@@ -28,6 +76,7 @@ class Settings:
     evolution_api_key: str = field(default_factory=lambda: os.getenv("EVOLUTION_API_KEY", ""))
     evolution_instance: str = field(default_factory=lambda: os.getenv("EVOLUTION_INSTANCE", ""))
     whatsapp_group_id: str = field(default_factory=lambda: os.getenv("WHATSAPP_GROUP_ID", ""))
+    whatsapp_group_id_auto: str = field(default_factory=lambda: os.getenv("WHATSAPP_GROUP_ID_AUTO", ""))
 
     reenvio_queda_minima: float = field(default_factory=lambda: float(os.getenv("REENVIO_QUEDA_MINIMA", 15)))
 
@@ -46,9 +95,9 @@ class Settings:
 
 
 def load_filtros() -> dict:
-    """Lê config.json com os critérios de filtro. Recarregado a cada chamada
-    para permitir editar o arquivo sem reiniciar o bot."""
-    path = BASE_DIR / "config.json"
+    """Lê o config do canal atual. Recarregado a cada chamada."""
+    arquivo = str(CANAIS[_canal.get()]["arquivo"])
+    path = BASE_DIR / arquivo
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
