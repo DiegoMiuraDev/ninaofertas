@@ -58,7 +58,18 @@ class Envio(Base):
     oferta = relationship("Oferta", back_populates="envios")
 
 
-_engine = create_engine(settings.database_url, echo=False, future=True)
+def _url_do_banco() -> str:
+    """Normaliza a URL do Postgres para o driver psycopg 3 (o Railway entrega
+    postgresql://, que o SQLAlchemy roteia para o psycopg2, que nao instalamos)."""
+    url = settings.database_url
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return url
+
+
+_engine = create_engine(_url_do_banco(), echo=False, future=True)
 _SessionFactory = sessionmaker(bind=_engine, expire_on_commit=False, future=True)
 
 
