@@ -6,3 +6,4 @@ loguru
 python-dotenv
 lxml
 pillow
+psycopg[binary]
